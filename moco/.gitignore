@@ -1,0 +1,26 @@
+# Dataset files (too large for GitHub, ~1.2GB each)
+CUB_200_2011/
+cub200_prepared/
+
+# Model checkpoints (too large, ~5GB+)
+checkpoints/
+
+# Python cache
+__pycache__/
+moco/__pycache__/
+*.pyc
+
+# Training logs
+*.log
+resnet50_log.txt
+
+# Results (generated, not source code)
+results.csv
+results_r50.csv
+
+# LibreOffice lock files
+.~lock.*
+
+# OS files
+.DS_Store
+Thumbs.db

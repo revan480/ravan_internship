@@ -1,0 +1,415 @@
+"""
+MoCo v2 Pre-Training on CUB-200-2011 (Single GPU).
+
+This script trains a ResNet backbone using MoCo v2 contrastive learning.
+Designed for a single NVIDIA RTX 3060 (12GB VRAM).
+
+Usage:
+    # Color augmentation (default MoCo v2)
+    python main_moco.py --data ~/Desktop/ravan/cub200_prepared --save-dir ./checkpoints/exp_color
+
+    # Rotation augmentation only (no color)
+    python main_moco.py --data ~/Desktop/ravan/cub200_prepared --no-color --use-rotation --save-dir ./checkpoints/exp_rotation
+
+    # Both color + rotation
+    python main_moco.py --data ~/Desktop/ravan/cub200_prepared --use-rotation --save-dir ./checkpoints/exp_color_rotation
+
+    # Baseline (no color, no rotation)
+    python main_moco.py --data ~/Desktop/ravan/cub200_prepared --no-color --save-dir ./checkpoints/exp_baseline
+"""
+
+import argparse
+import math
+import os
+import random
+import time
+
+import torch
+import torch.backends.cudnn as cudnn
+import torch.nn as nn
+import torch.optim
+import torchvision.datasets as datasets
+import torchvision.models as models
+import torchvision.transforms as transforms
+
+from moco.builder import MoCo
+from moco.loader import GaussianBlur, TwoCropsTransform
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="MoCo v2 Pre-Training (Single GPU)")
+
+    # Data
+    parser.add_argument(
+        "--data",
+        type=str,
+        default=os.path.expanduser("~/Desktop/ravan/moco/cub200_prepared"),
+        help="path to prepared CUB-200 dataset",
+    )
+
+    # Model
+    parser.add_argument(
+        "--arch",
+        type=str,
+        default="resnet50",
+        choices=["resnet18", "resnet50"],
+        help="model architecture (default: resnet50)",
+    )
+
+    # Training
+    parser.add_argument("--epochs", type=int, default=500, help="number of training epochs")
+    parser.add_argument("--batch-size", type=int, default=256, help="effective batch size (simulated via gradient accumulation)")
+    parser.add_argument("--micro-batch-size", type=int, default=64, help="actual batch size per forward pass (must fit in GPU memory)")
+    parser.add_argument("--lr", type=float, default=0.03, help="initial learning rate")
+    parser.add_argument("--momentum", type=float, default=0.9, help="SGD momentum")
+    parser.add_argument("--weight-decay", type=float, default=1e-4, help="weight decay")
+    parser.add_argument("--workers", type=int, default=4, help="data loading workers")
+
+    # MoCo
+    parser.add_argument("--moco-dim", type=int, default=128, help="feature dimension")
+    parser.add_argument("--moco-k", type=int, default=16384, help="queue size")
+    parser.add_argument("--moco-m", type=float, default=0.999, help="momentum for key encoder")
+    parser.add_argument("--moco-t", type=float, default=0.2, help="temperature")
+    parser.add_argument("--mlp", action="store_true", default=True, help="use MLP projection head (MoCo v2)")
+    parser.add_argument("--no-mlp", action="store_true", help="disable MLP projection head")
+
+    # LR schedule
+    parser.add_argument("--cos", action="store_true", default=False, help="use cosine LR schedule")
+    parser.add_argument("--schedule", nargs="+", type=int, default=[300, 400], help="LR drop epochs (step decay)")
+
+    # Augmentation flags
+    parser.add_argument("--use-color", action="store_true", default=True, dest="use_color", help="enable color jittering (default: True)")
+    parser.add_argument("--no-color", action="store_false", dest="use_color", help="disable color jittering")
+    parser.add_argument("--use-rotation", action="store_true", default=False, help="enable random 90-degree rotation augmentation")
+    parser.add_argument("--color-strength", type=float, default=1.0, help="multiplier for color jittering strength")
+
+    # Checkpointing
+    parser.add_argument("--save-dir", type=str, default="./checkpoints/default", help="directory to save checkpoints")
+    parser.add_argument("--resume", type=str, default="", help="path to checkpoint to resume from")
+    parser.add_argument("--save-freq", type=int, default=50, help="save checkpoint every N epochs")
+
+    # Misc
+    parser.add_argument("--print-freq", type=int, default=20, help="print frequency (batches)")
+    parser.add_argument("--seed", type=int, default=42, help="random seed")
+
+    args = parser.parse_args()
+
+    # Handle --no-mlp flag
+    if args.no_mlp:
+        args.mlp = False
+
+    return args
+
+
+class RandomRotation90:
+    """Apply a random rotation from {0, 90, 180, 270} degrees."""
+
+    def __call__(self, img):
+        angle = random.choice([0, 90, 180, 270])
+        if angle != 0:
+            img = img.rotate(angle)
+        return img
+
+
+class AverageMeter:
+    """Computes and stores the average and current value."""
+
+    def __init__(self, name, fmt=":f"):
+        self.name = name
+        self.fmt = fmt
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+    def __str__(self):
+        fmtstr = "{name} {val" + self.fmt + "} ({avg" + self.fmt + "})"
+        return fmtstr.format(**self.__dict__)
+
+
+class ProgressMeter:
+    """Displays training progress."""
+
+    def __init__(self, num_batches, meters, prefix=""):
+        self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
+        self.meters = meters
+        self.prefix = prefix
+
+    def display(self, batch):
+        entries = [self.prefix + self.batch_fmtstr.format(batch)]
+        entries += [str(meter) for meter in self.meters]
+        print("\t".join(entries), flush=True)
+
+    def _get_batch_fmtstr(self, num_batches):
+        num_digits = len(str(num_batches))
+        fmt = "{:" + str(num_digits) + "d}"
+        return "[" + fmt + "/" + fmt.format(num_batches) + "]"
+
+
+def build_augmentation(args):
+    """Build the augmentation pipeline based on experiment flags."""
+    aug_list = [
+        transforms.RandomResizedCrop(224, scale=(0.2, 1.0)),
+        transforms.RandomHorizontalFlip(),
+    ]
+
+    if args.use_rotation:
+        aug_list.append(transforms.RandomApply([RandomRotation90()], p=0.5))
+
+    if args.use_color:
+        s = args.color_strength
+        aug_list.append(
+            transforms.RandomApply(
+                [transforms.ColorJitter(0.4 * s, 0.4 * s, 0.4 * s, 0.1 * s)],
+                p=0.8,
+            )
+        )
+        aug_list.append(transforms.RandomGrayscale(p=0.2))
+
+    aug_list.append(transforms.RandomApply([GaussianBlur([0.1, 2.0])], p=0.5))
+    aug_list.append(transforms.ToTensor())
+    aug_list.append(
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    )
+
+    return transforms.Compose(aug_list)
+
+
+def adjust_learning_rate(optimizer, epoch, args):
+    """LR schedule: step decay or cosine annealing."""
+    if args.cos:
+        lr = args.lr * 0.5 * (1.0 + math.cos(math.pi * epoch / args.epochs))
+    else:
+        lr = args.lr
+        for milestone in args.schedule:
+            if epoch >= milestone:
+                lr *= 0.1
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = lr
+    return lr
+
+
+def contrastive_accuracy(output, target):
+    """Computes the accuracy of the contrastive prediction (is the positive the highest?)."""
+    with torch.no_grad():
+        batch_size = target.size(0)
+        _, pred = output.topk(1, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(target.view(1, -1).expand_as(pred))
+        correct_k = correct[:1].reshape(-1).float().sum(0, keepdim=True)
+        acc = correct_k.mul_(100.0 / batch_size)
+        return acc
+
+
+def save_checkpoint(state, save_dir, filename):
+    os.makedirs(save_dir, exist_ok=True)
+    filepath = os.path.join(save_dir, filename)
+    torch.save(state, filepath)
+    print(f"  => Saved checkpoint: {filepath}")
+
+
+def main():
+    args = parse_args()
+
+    # Compute gradient accumulation steps
+    # effective batch = micro_batch_size * accum_steps
+    # We want effective batch = args.batch_size (256), but GPU can only fit micro_batch_size (48)
+    # So we accumulate gradients over multiple forward passes before doing one optimizer step
+    accum_steps = max(1, args.batch_size // args.micro_batch_size)
+
+    # Print experiment configuration
+    print("=" * 70)
+    print("MoCo v2 Pre-Training Configuration")
+    print("=" * 70)
+    print(f"  Architecture:     {args.arch}")
+    print(f"  Epochs:           {args.epochs}")
+    print(f"  Effective batch:  {args.micro_batch_size} x {accum_steps} = {args.micro_batch_size * accum_steps} (target: {args.batch_size})")
+    print(f"  Micro batch size: {args.micro_batch_size} (fits in GPU)")
+    print(f"  Accum steps:      {accum_steps}")
+    print(f"  Learning rate:    {args.lr}")
+    print(f"  LR schedule:      {'cosine' if args.cos else f'step decay at {args.schedule}'}")
+    print(f"  MoCo dim:         {args.moco_dim}")
+    print(f"  MoCo K (queue):   {args.moco_k}")
+    print(f"  MoCo m (momentum):{args.moco_m}")
+    print(f"  MoCo T (temp):    {args.moco_t}")
+    print(f"  MLP head:         {args.mlp}")
+    print(f"  Color augment:    {args.use_color}" + (f" (strength={args.color_strength})" if args.use_color else ""))
+    print(f"  Rotation augment: {args.use_rotation}" + (" (p=0.5)" if args.use_rotation else ""))
+    print(f"  Data:             {args.data}")
+    print(f"  Save dir:         {args.save_dir}")
+    print(f"  Seed:             {args.seed}")
+    print("=" * 70)
+
+    # Set seed
+    random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    cudnn.deterministic = False
+    cudnn.benchmark = True
+
+    # Build model
+    print("=> Creating model '{}'".format(args.arch))
+    model = MoCo(
+        base_encoder=models.__dict__[args.arch],
+        dim=args.moco_dim,
+        K=args.moco_k,
+        m=args.moco_m,
+        T=args.moco_t,
+        mlp=args.mlp,
+    )
+    model.cuda()
+
+    # Loss and optimizer
+    criterion = nn.CrossEntropyLoss().cuda()
+    optimizer = torch.optim.SGD(
+        model.parameters(),
+        args.lr,
+        momentum=args.momentum,
+        weight_decay=args.weight_decay,
+    )
+
+    # Resume from checkpoint
+    start_epoch = 0
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print(f"=> Loading checkpoint '{args.resume}'")
+            checkpoint = torch.load(args.resume, map_location="cuda")
+            start_epoch = checkpoint["epoch"]
+            model.load_state_dict(checkpoint["state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer"])
+            print(f"=> Loaded checkpoint (epoch {checkpoint['epoch']})")
+        else:
+            print(f"=> No checkpoint found at '{args.resume}'")
+
+    # Data loading
+    traindir = os.path.join(args.data, "train")
+    augmentation = build_augmentation(args)
+
+    train_dataset = datasets.ImageFolder(
+        traindir, TwoCropsTransform(augmentation)
+    )
+
+    print(f"=> Training dataset: {len(train_dataset)} images")
+
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=args.micro_batch_size,  # actual GPU batch = 48 (fits in 12GB)
+        shuffle=True,
+        num_workers=args.workers,
+        pin_memory=True,
+        drop_last=True,
+    )
+
+    # Training loop
+    for epoch in range(start_epoch, args.epochs):
+        lr = adjust_learning_rate(optimizer, epoch, args)
+
+        loss_avg, acc_avg = train_one_epoch(
+            train_loader, model, criterion, optimizer, epoch, args, accum_steps
+        )
+
+        print(
+            f"Epoch [{epoch + 1}/{args.epochs}]  "
+            f"Loss: {loss_avg:.4f}  "
+            f"Acc: {acc_avg:.2f}%  "
+            f"LR: {lr:.6f}"
+        )
+
+        # Save checkpoint
+        if (epoch + 1) % args.save_freq == 0 or (epoch + 1) == args.epochs:
+            save_checkpoint(
+                {
+                    "epoch": epoch + 1,
+                    "arch": args.arch,
+                    "state_dict": model.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                    "args": vars(args),
+                },
+                args.save_dir,
+                f"checkpoint_{epoch + 1:04d}.pth.tar",
+            )
+
+    print("\n=> Training complete!")
+    print(f"   Final checkpoint saved in: {args.save_dir}")
+
+
+def train_one_epoch(train_loader, model, criterion, optimizer, epoch, args, accum_steps):
+    """Train for one epoch with gradient accumulation.
+
+    Gradient accumulation simulates a large batch by:
+    1. Running multiple small forward/backward passes (micro-batches)
+    2. Accumulating the gradients without updating weights
+    3. Doing one optimizer step after accum_steps micro-batches
+
+    This is mathematically equivalent to using a large batch,
+    because gradients are additive: grad(batch) = sum(grad(micro_batches)).
+    We divide loss by accum_steps so the total gradient magnitude matches.
+    """
+    batch_time = AverageMeter("Time", ":.3f")
+    data_time = AverageMeter("Data", ":.3f")
+    losses = AverageMeter("Loss", ":.4f")
+    accs = AverageMeter("Acc", ":.2f")
+    progress = ProgressMeter(
+        len(train_loader),
+        [batch_time, data_time, losses, accs],
+        prefix=f"Epoch: [{epoch + 1}]",
+    )
+
+    model.train()
+    end = time.time()
+
+    optimizer.zero_grad()  # zero gradients once at the start
+
+    for i, (images, _) in enumerate(train_loader):
+        data_time.update(time.time() - end)
+
+        images[0] = images[0].cuda(non_blocking=True)
+        images[1] = images[1].cuda(non_blocking=True)
+
+        # Forward pass (micro-batch of 48 images)
+        output, target = model(im_q=images[0], im_k=images[1])
+        loss = criterion(output, target)
+
+        # Divide loss by accum_steps so total gradient = same as one big batch
+        # Without this, gradients would be accum_steps times too large
+        loss = loss / accum_steps
+
+        # Contrastive accuracy (measured on micro-batch)
+        acc = contrastive_accuracy(output, target)
+
+        losses.update(loss.item() * accum_steps, images[0].size(0))  # log unscaled loss
+        accs.update(acc.item(), images[0].size(0))
+
+        # Backward: accumulate gradients (don't zero them yet)
+        loss.backward()
+
+        # Only update weights every accum_steps micro-batches
+        if (i + 1) % accum_steps == 0:
+            optimizer.step()   # one SGD step with accumulated gradients
+            optimizer.zero_grad()  # reset gradients for next accumulation cycle
+
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if i % args.print_freq == 0:
+            progress.display(i)
+
+    # Handle leftover micro-batches at end of epoch
+    # (if total batches not divisible by accum_steps)
+    if len(train_loader) % accum_steps != 0:
+        optimizer.step()
+        optimizer.zero_grad()
+
+    return losses.avg, accs.avg
+
+
+if __name__ == "__main__":
+    main()
