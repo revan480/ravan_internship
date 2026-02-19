@@ -29,6 +29,7 @@ python main_moco.py \
     --moco-k 16384 \
     --save-dir ${SAVE_DIR} \
     --save-freq 50 \
+    --workers 16 \
     2>&1 | tee -a ${LOG}
 
 CHECKPOINT="${SAVE_DIR}/checkpoint_0500.pth.tar"
@@ -41,6 +42,7 @@ OBJ_OUTPUT=$(python main_lincls.py \
     --arch ${ARCH} \
     --pretrained ${CHECKPOINT} \
     --epochs ${EPOCHS_LINCLS} \
+    --workers 16 \
     2>&1)
 echo "${OBJ_OUTPUT}" | tee -a ${LOG}
 
@@ -57,6 +59,7 @@ ROT_OUTPUT=$(python main_lincls.py \
     --pretrained ${CHECKPOINT} \
     --eval-rotation \
     --epochs ${EPOCHS_LINCLS} \
+    --workers 16 \
     2>&1)
 echo "${ROT_OUTPUT}" | tee -a ${LOG}
 
