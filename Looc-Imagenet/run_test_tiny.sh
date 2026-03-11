@@ -35,7 +35,7 @@ python main_looc.py \
     --batch-size 4 \
     --moco-k 64 \
     --moco-t 0.2 \
-    --n-aug 2 \
+    --aug-types rotation color \
     --workers 2 \
     --save-dir ${SAVE_DIR} \
     --save-freq 1 \

@@ -49,7 +49,9 @@ def parse_args():
     parser.add_argument("--moco-k", type=int, default=16384, help="queue size per head")
     parser.add_argument("--moco-m", type=float, default=0.999, help="momentum for key encoder")
     parser.add_argument("--moco-t", type=float, default=0.2, help="temperature")
-    parser.add_argument("--n-aug", type=int, default=2, help="number of atomic augmentations (default: 2 for rotation + color)")
+    parser.add_argument("--aug-types", nargs="+", type=str, default=["rotation", "color"],
+                        choices=["rotation", "color"],
+                        help="atomic augmentations to use (default: rotation color)")
 
     # LR schedule
     parser.add_argument("--cos", action="store_true", default=False, help="use cosine LR schedule")
@@ -163,7 +165,8 @@ def main():
     print(f"  MoCo K (queue):   {args.moco_k}")
     print(f"  MoCo m (momentum):{args.moco_m}")
     print(f"  MoCo T (temp):    {args.moco_t}")
-    print(f"  n_aug:            {args.n_aug} (heads: {args.n_aug + 1})")
+    n_aug = len(args.aug_types)
+    print(f"  aug_types:        {args.aug_types} (n_aug={n_aug}, heads: {n_aug + 1})")
     print(f"  Color strength:   {args.color_strength}")
     print(f"  Data:             {args.data}")
     print(f"  Save dir:         {args.save_dir}")
@@ -184,7 +187,7 @@ def main():
         K=args.moco_k,
         m=args.moco_m,
         T=args.moco_t,
-        n_aug=args.n_aug,
+        n_aug=n_aug,
     )
     model.cuda()
 
@@ -213,7 +216,7 @@ def main():
     traindir = os.path.join(args.data, "train")
 
     train_dataset = datasets.ImageFolder(
-        traindir, LooCTransform(color_strength=args.color_strength)
+        traindir, LooCTransform(aug_types=args.aug_types, color_strength=args.color_strength)
     )
 
     print(f"=> Training dataset: {len(train_dataset)} images")
@@ -278,7 +281,7 @@ def train_one_epoch(train_loader, model, optimizer, epoch, args):
     for i, (images, _) in enumerate(train_loader):
         data_time.update(time.time() - end)
 
-        # Move all 4 views to GPU
+        # Move all views to GPU
         views = [v.cuda(non_blocking=True) for v in images]
 
         # Forward pass (loss computed inside model)

@@ -11,10 +11,9 @@ class LooC(nn.Module):
         heads_q / heads_k: n_aug+1 MLP projection heads (2048 → 2048 → 128)
         queue_i: one queue per embedding space, shape [dim, K]
 
-    Embedding spaces (for n_aug=2, rotation + color):
+    Embedding spaces (n_aug+1 total):
         Z0: all-invariant (standard MoCo objective)
-        Z1: rotation-variant (sensitive to rotation, invariant to color)
-        Z2: color-variant (sensitive to color, invariant to rotation)
+        Z1..Zn: one per atomic augmentation (variant in that augmentation)
     """
 
     def __init__(self, base_encoder, dim=128, K=16384, m=0.999, T=0.2, mlp=True, n_aug=2):
@@ -42,6 +41,8 @@ class LooC(nn.Module):
         feat_dim = self.backbone_q.fc.in_features  # 2048 for ResNet-50
         self.backbone_q.fc = nn.Identity()
         self.backbone_k.fc = nn.Identity()
+        #Moco -> encoder is one piece - backbone + projection head fused together
+        #Looc -> separate because multiple heads share one backbone
 
         # Create projection heads: n_aug+1 MLP heads
         # Each: Linear(2048, 2048) → ReLU → Linear(2048, 128)
@@ -62,7 +63,7 @@ class LooC(nn.Module):
             for _ in range(self.n_heads)
         ])
 
-        # Initialize key encoder with query encoder weights (no gradient)
+        # Initialize key encoder with query encoder weights
         for param_q, param_k in zip(
             self.backbone_q.parameters(), self.backbone_k.parameters()
         ):
@@ -76,14 +77,14 @@ class LooC(nn.Module):
             param_k.requires_grad = False
 
         # Create per-head queues
-        for i in range(self.n_heads):
+        for i in range(self.n_heads): #3 quees: q_0, q_1, q_2
             self.register_buffer(f"queue_{i}", torch.randn(dim, K))
             setattr(self, f"queue_{i}",
                     nn.functional.normalize(getattr(self, f"queue_{i}"), dim=0))
             self.register_buffer(f"queue_ptr_{i}", torch.zeros(1, dtype=torch.long))
 
         self.criterion = nn.CrossEntropyLoss()
-
+    # Paper says: We adopt MOCO as the backbone of our framework
     @torch.no_grad()
     def _momentum_update_key_encoder(self):
         """Momentum update: theta_k = m * theta_k + (1 - m) * theta_q"""
@@ -121,18 +122,19 @@ class LooC(nn.Module):
         Forward pass for LooC.
 
         Args:
-            views: list of 4 tensors [q, k0, k1, k2], each (N, C, H, W)
-                q:  all augmentations sampled independently (query)
-                k0: all augmentations sampled independently (standard key, positive in Z0)
-                k1: shares rotation with q, fresh color (positive in Z1)
-                k2: shares color with q, fresh rotation (positive in Z2)
+            views: list of n_aug+2 tensors [q, k0, k1, ...], each (N, C, H, W)
+                q:   all augmentations sampled independently (query)
+                k0:  all augmentations sampled independently (standard key, positive in Z0)
+                k_i: shares augmentation i with q (positive in Z_{i+1})
 
         Returns:
-            loss: scalar, average of L0 + L1 + L2
+            loss: scalar, average over all n_aug+1 embedding spaces
             logits0: (N, 1+K) contrastive logits in Z0 (for accuracy logging)
             labels0: (N,) all zeros (for accuracy logging)
         """
-        im_q, im_k0, im_k1, im_k2 = views
+        im_q = views[0]
+        im_k0 = views[1]
+        im_keys = views[2:]  # n_aug extra key views
 
         # ---- Query features (with gradient) ----
         feat_q = self.backbone_q(im_q)  # (N, 2048)
@@ -140,65 +142,63 @@ class LooC(nn.Module):
         # ---- Key features and projections (no gradient, momentum encoder) ----
         with torch.no_grad():
             self._momentum_update_key_encoder()
+
             feat_k0 = self.backbone_k(im_k0)  # (N, 2048)
-            feat_k1 = self.backbone_k(im_k1)  # (N, 2048)
-            feat_k2 = self.backbone_k(im_k2)  # (N, 2048)
+            feats_k = [self.backbone_k(k) for k in im_keys]
 
-            # Key projections (Z0)
-            k0_z0 = nn.functional.normalize(self.heads_k[0](feat_k0), dim=1)
+            # Project k0 through all heads
+            k0_proj = [nn.functional.normalize(self.heads_k[h](feat_k0), dim=1)
+                       for h in range(self.n_heads)]
 
-            # Key projections (Z1)
-            k1_z1 = nn.functional.normalize(self.heads_k[1](feat_k1), dim=1)  # positive (same rotation as q)
-            k0_z1 = nn.functional.normalize(self.heads_k[1](feat_k0), dim=1)  # negative (different rotation)
-            k2_z1 = nn.functional.normalize(self.heads_k[1](feat_k2), dim=1)  # negative (different rotation)
-
-            # Key projections (Z2)
-            k2_z2 = nn.functional.normalize(self.heads_k[2](feat_k2), dim=1)  # positive (same color as q)
-            k0_z2 = nn.functional.normalize(self.heads_k[2](feat_k0), dim=1)  # negative (different color)
-            k1_z2 = nn.functional.normalize(self.heads_k[2](feat_k1), dim=1)  # negative (different color)
+            # Project each extra key through all heads
+            # keys_proj[i][h] = extra key i projected through head h
+            keys_proj = []
+            for feat_ki in feats_k:
+                keys_proj.append([
+                    nn.functional.normalize(self.heads_k[h](feat_ki), dim=1)
+                    for h in range(self.n_heads)
+                ])
 
         # ---- Query projections (with gradient) ----
-        q0 = nn.functional.normalize(self.heads_q[0](feat_q), dim=1)
-        q1 = nn.functional.normalize(self.heads_q[1](feat_q), dim=1)
-        q2 = nn.functional.normalize(self.heads_q[2](feat_q), dim=1)
+        q_proj = [nn.functional.normalize(self.heads_q[h](feat_q), dim=1)
+                  for h in range(self.n_heads)]
 
         # ---- L0: standard MoCo InfoNCE in Z0 ----
-        l0_pos = torch.einsum("nc,nc->n", [q0, k0_z0]).unsqueeze(-1)  # (N, 1)
-        l0_neg = torch.einsum("nc,ck->nk", [q0, self.queue_0.clone().detach()])  # (N, K)
+        l0_pos = torch.einsum("nc,nc->n", [q_proj[0], k0_proj[0]]).unsqueeze(-1)  # (N, 1)
+        l0_neg = torch.einsum("nc,ck->nk", [q_proj[0], self.queue_0.clone().detach()])  # (N, K)
         logits0 = torch.cat([l0_pos, l0_neg], dim=1) / self.T  # (N, 1+K)
         labels0 = torch.zeros(logits0.shape[0], dtype=torch.long, device=im_q.device)
-        loss0 = self.criterion(logits0, labels0)
+        total_loss = self.criterion(logits0, labels0)
 
-        # ---- L1: rotation-variant InfoNCE in Z1 ----
-        # Positive: k1 (shares rotation with q)
-        # Same-image negatives: k0, k2 (different rotation from q)
-        # Queue negatives: queue_1
-        l1_pos = torch.einsum("nc,nc->n", [q1, k1_z1]).unsqueeze(-1)  # (N, 1)
-        l1_neg_k0 = torch.einsum("nc,nc->n", [q1, k0_z1]).unsqueeze(-1)  # (N, 1)
-        l1_neg_k2 = torch.einsum("nc,nc->n", [q1, k2_z1]).unsqueeze(-1)  # (N, 1)
-        l1_neg_queue = torch.einsum("nc,ck->nk", [q1, self.queue_1.clone().detach()])  # (N, K)
-        logits1 = torch.cat([l1_pos, l1_neg_k0, l1_neg_k2, l1_neg_queue], dim=1) / self.T  # (N, 1+2+K)
-        labels1 = torch.zeros(logits1.shape[0], dtype=torch.long, device=im_q.device)
-        loss1 = self.criterion(logits1, labels1)
+        # ---- Li: augmentation-variant InfoNCE in Zi (i = 1..n_aug) ----
+        for i in range(self.n_aug):
+            head_idx = i + 1
+            qi = q_proj[head_idx]
 
-        # ---- L2: color-variant InfoNCE in Z2 ----
-        # Positive: k2 (shares color with q)
-        # Same-image negatives: k0, k1 (different color from q)
-        # Queue negatives: queue_2
-        l2_pos = torch.einsum("nc,nc->n", [q2, k2_z2]).unsqueeze(-1)  # (N, 1)
-        l2_neg_k0 = torch.einsum("nc,nc->n", [q2, k0_z2]).unsqueeze(-1)  # (N, 1)
-        l2_neg_k1 = torch.einsum("nc,nc->n", [q2, k1_z2]).unsqueeze(-1)  # (N, 1)
-        l2_neg_queue = torch.einsum("nc,ck->nk", [q2, self.queue_2.clone().detach()])  # (N, K)
-        logits2 = torch.cat([l2_pos, l2_neg_k0, l2_neg_k1, l2_neg_queue], dim=1) / self.T  # (N, 1+2+K)
-        labels2 = torch.zeros(logits2.shape[0], dtype=torch.long, device=im_q.device)
-        loss2 = self.criterion(logits2, labels2)
+            # Positive: extra key i shares augmentation i with q
+            li_pos = torch.einsum("nc,nc->n", [qi, keys_proj[i][head_idx]]).unsqueeze(-1)
 
-        # ---- Enqueue k0 into all queues (reuse already-computed projections) ----
-        self._dequeue_and_enqueue(k0_z0, 0)
-        self._dequeue_and_enqueue(k0_z1, 1)
-        self._dequeue_and_enqueue(k0_z2, 2)
+            # Same-image negatives: k0, plus all other extra keys (they don't share aug i)
+            neg_parts = [torch.einsum("nc,nc->n", [qi, k0_proj[head_idx]]).unsqueeze(-1)]
+            for j in range(self.n_aug):
+                if j != i:
+                    neg_parts.append(
+                        torch.einsum("nc,nc->n", [qi, keys_proj[j][head_idx]]).unsqueeze(-1)
+                    )
 
-        # ---- Average loss across all 3 embedding spaces ----
-        loss = (loss0 + loss1 + loss2) / 3.0
+            # Queue negatives
+            queue_i = getattr(self, f"queue_{head_idx}").clone().detach()
+            neg_parts.append(torch.einsum("nc,ck->nk", [qi, queue_i]))
+
+            logits_i = torch.cat([li_pos] + neg_parts, dim=1) / self.T
+            labels_i = torch.zeros(logits_i.shape[0], dtype=torch.long, device=im_q.device)
+            total_loss = total_loss + self.criterion(logits_i, labels_i)
+
+        # ---- Enqueue k0 projections into all queues ----
+        for h in range(self.n_heads):
+            self._dequeue_and_enqueue(k0_proj[h], h)
+
+        # ---- Average loss across all embedding spaces ----
+        loss = total_loss / self.n_heads
 
         return loss, logits0, labels0
