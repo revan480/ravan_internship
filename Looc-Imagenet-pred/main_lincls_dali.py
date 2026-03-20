@@ -40,6 +40,8 @@ def parse_args():
     parser.add_argument("--eval-rotation", action="store_true")
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--num-threads", type=int, default=8)
+    parser.add_argument("--resume", default="", type=str,
+                        help="path to linear eval checkpoint to resume training")
     return parser.parse_args()
 
 
@@ -136,6 +138,10 @@ def accuracy(output, target, topk=(1,)):
             correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
+
+
+def save_checkpoint(state, filename="lincls_checkpoint.pth.tar"):
+    torch.save(state, filename)
 
 
 def load_weights(model, checkpoint_path, looc_backbone=False):
@@ -347,10 +353,25 @@ def main():
     train_fn = train_epoch_rotation if args.eval_rotation else train_epoch_object
     val_fn = validate_rotation if args.eval_rotation else validate_object
 
+    # Resume from linear eval checkpoint
+    start_epoch = 0
     best_acc1 = 0.0
+
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print(f"=> Resuming linear eval from '{args.resume}'")
+            ckpt = torch.load(args.resume, map_location="cpu")
+            start_epoch = ckpt["epoch"]
+            best_acc1 = ckpt.get("best_acc1", 0.0)
+            model.fc.load_state_dict(ckpt["fc_state_dict"])
+            optimizer.load_state_dict(ckpt["optimizer"])
+            print(f"=> Resumed from epoch {start_epoch}, best_acc1={best_acc1:.2f}%")
+        else:
+            print(f"=> WARNING: no checkpoint found at '{args.resume}', starting from scratch")
+
     start_time = time.time()
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(start_epoch + 1, args.epochs + 1):
         lr = args.lr
         for milestone in args.schedule:
             if epoch > milestone:
@@ -371,6 +392,24 @@ def main():
               f"Val Acc@5: {val_acc5:.2f}%  "
               f"Time: {elapsed/60:.1f}min"
               f"{'  *BEST*' if is_best else ''}")
+
+        # Save linear eval checkpoint for resume
+        lincls_ckpt_path = os.path.join(os.path.dirname(args.pretrained) if args.pretrained else ".", "lincls_checkpoint.pth.tar")
+        save_checkpoint({
+            "epoch": epoch,
+            "fc_state_dict": model.fc.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "best_acc1": best_acc1,
+            "args": vars(args),
+        }, filename=lincls_ckpt_path)
+
+        if is_best:
+            best_ckpt_path = lincls_ckpt_path.replace("lincls_checkpoint", "lincls_best")
+            save_checkpoint({
+                "epoch": epoch,
+                "fc_state_dict": model.fc.state_dict(),
+                "best_acc1": best_acc1,
+            }, filename=best_ckpt_path)
 
     task = "Rotation Classification (4 classes)" if args.eval_rotation else f"Object Classification ({num_classes} classes)"
     total_time = (time.time() - start_time) / 60
