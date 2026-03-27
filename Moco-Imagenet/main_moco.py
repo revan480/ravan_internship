@@ -1,23 +1,3 @@
-"""
-MoCo v2 Pre-Training on ImageNet-100 (Single GPU).
-
-This script trains a ResNet-50 backbone using MoCo v2 contrastive learning.
-Designed for single GPU training (RTX 5090 32GB for real runs, RTX 3060 12GB for testing).
-
-Usage:
-    # Color augmentation (default MoCo v2)
-    python main_moco.py --data ./imagenet100 --save-dir ./checkpoints/exp_color
-
-    # Rotation augmentation only (no color)
-    python main_moco.py --data ./imagenet100 --no-color --use-rotation --save-dir ./checkpoints/exp_rotation
-
-    # Both color + rotation
-    python main_moco.py --data ./imagenet100 --use-rotation --save-dir ./checkpoints/exp_color_rotation
-
-    # Baseline (no color, no rotation)
-    python main_moco.py --data ./imagenet100 --no-color --save-dir ./checkpoints/exp_baseline
-"""
-
 import argparse
 import math
 import os

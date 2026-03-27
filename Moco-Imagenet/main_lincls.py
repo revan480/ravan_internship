@@ -1,23 +1,3 @@
-"""
-Linear Evaluation for MoCo v2 Pre-Trained Models.
-
-Freezes the backbone and trains only a linear classifier to evaluate
-the quality of learned representations.
-
-Two evaluation modes:
-  - Object classification (100 classes for ImageNet-100, default)
-  - Rotation classification (4 classes, --eval-rotation)
-
-Usage:
-    # Object classification
-    python main_lincls.py --data ./imagenet100 \
-        --pretrained ./checkpoints/exp_color/checkpoint_0500.pth.tar
-
-    # Rotation classification
-    python main_lincls.py --data ./imagenet100 \
-        --pretrained ./checkpoints/exp_color/checkpoint_0500.pth.tar --eval-rotation
-"""
-
 import argparse
 import os
 import random
@@ -87,6 +67,8 @@ def parse_args():
     # Misc
     parser.add_argument("--print-freq", type=int, default=20, help="print frequency")
     parser.add_argument("--seed", type=int, default=42, help="random seed")
+    parser.add_argument("--resume", default="", type=str,
+                        help="path to linear eval checkpoint to resume training")
 
     return parser.parse_args()
 
@@ -167,6 +149,10 @@ def accuracy(output, target, topk=(1,)):
             correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
+
+
+def save_checkpoint(state, filename="lincls_checkpoint.pth.tar"):
+    torch.save(state, filename)
 
 
 def load_pretrained_weights(model, pretrained_path, args):
@@ -317,9 +303,24 @@ def main():
         pin_memory=True,
     )
 
-    # Training loop
+    # Resume from linear eval checkpoint
+    start_epoch = 0
     best_acc1 = 0.0
-    for epoch in range(args.epochs):
+
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print(f"=> Resuming linear eval from '{args.resume}'")
+            ckpt = torch.load(args.resume, map_location="cpu")
+            start_epoch = ckpt["epoch"]
+            best_acc1 = ckpt.get("best_acc1", 0.0)
+            model.fc.load_state_dict(ckpt["fc_state_dict"])
+            optimizer.load_state_dict(ckpt["optimizer"])
+            print(f"=> Resumed from epoch {start_epoch}, best_acc1={best_acc1:.2f}%")
+        else:
+            print(f"=> WARNING: no checkpoint found at '{args.resume}', starting from scratch")
+
+    # Training loop
+    for epoch in range(start_epoch, args.epochs):
         adjust_learning_rate(optimizer, epoch, args)
 
         train_loss, train_acc1 = train_one_epoch(
@@ -337,6 +338,24 @@ def main():
             f"Val Loss: {val_loss:.4f}  Val Acc@1: {val_acc1:.2f}%  Val Acc@5: {val_acc5:.2f}%"
             + ("  *BEST*" if is_best else "")
         )
+
+        # Save linear eval checkpoint for resume
+        lincls_ckpt_path = os.path.join(os.path.dirname(args.pretrained) if args.pretrained else ".", "lincls_checkpoint.pth.tar")
+        save_checkpoint({
+            "epoch": epoch + 1,
+            "fc_state_dict": model.fc.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "best_acc1": best_acc1,
+            "args": vars(args),
+        }, filename=lincls_ckpt_path)
+
+        if is_best:
+            best_ckpt_path = lincls_ckpt_path.replace("lincls_checkpoint", "lincls_best")
+            save_checkpoint({
+                "epoch": epoch + 1,
+                "fc_state_dict": model.fc.state_dict(),
+                "best_acc1": best_acc1,
+            }, filename=best_ckpt_path)
 
     print("\n" + "=" * 70)
     print(f"FINAL RESULTS — {task_name}")

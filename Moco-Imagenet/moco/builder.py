@@ -99,7 +99,7 @@ class MoCo(nn.Module):
             labels: (N,) ground truth labels (all zeros)
         """
         # Compute query features
-        q = self.encoder_q(im_q)  # (N, dim)
+        q = self.encoder_q(im_q) # (N, dim)
         q = nn.functional.normalize(q, dim=1)
 
         # Compute key features (no gradient)
