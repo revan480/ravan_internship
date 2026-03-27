@@ -1,0 +1,4 @@
+# Only track Python scripts — ignore raw data files
+*.tgz
+*.mat
+jpg/
