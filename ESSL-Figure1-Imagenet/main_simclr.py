@@ -13,7 +13,7 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 
 from simclr.builder import SimCLR, SimCLRPred
-from simclr.loader import ESSLTransform
+from simclr.loader import BaselineTransform, ESSLTransform
 from simclr.loss import NTXentLoss
 from transformations import get_transformation_spec
 
@@ -25,16 +25,22 @@ def parse_args():
 
     # E-SSL experiment
     parser.add_argument(
+        "--baseline",
+        action="store_true",
+        default=False,
+        help="vanilla SimCLR baseline (no tested transformation, no pred head)",
+    )
+    parser.add_argument(
         "--transformation",
         type=str,
-        required=True,
+        default=None,
         choices=["hflip", "grayscale", "rotation", "vflip", "jigsaw", "blur", "invert"],
         help="which transformation to test",
     )
     parser.add_argument(
         "--condition",
         type=str,
-        required=True,
+        default=None,
         choices=["invariance", "sensitivity"],
         help="invariance (always-apply, no pred) or sensitivity (stochastic + pred head)",
     )
@@ -89,9 +95,17 @@ def parse_args():
     # Scale learning rate
     args.lr = args.lr * args.batch_size / 256
 
+    # Validate: either --baseline or both --transformation and --condition
+    if not args.baseline:
+        if args.transformation is None or args.condition is None:
+            parser.error("--transformation and --condition are required unless --baseline is set")
+
     # Auto-generate save dir if not specified
     if not args.save_dir:
-        args.save_dir = f"./checkpoints/{args.transformation}_{args.condition}"
+        if args.baseline:
+            args.save_dir = "./checkpoints/baseline"
+        else:
+            args.save_dir = f"./checkpoints/{args.transformation}_{args.condition}"
 
     return args
 
@@ -158,17 +172,28 @@ def save_checkpoint(state, save_dir, filename):
 
 def main():
     args = parse_args()
-    spec = get_transformation_spec(args.transformation)
+
+    # Resolve spec (None for baseline)
+    if args.baseline:
+        spec = None
+    else:
+        spec = get_transformation_spec(args.transformation)
 
     # Print configuration
     print("=" * 70)
-    print(f"E-SSL Figure 1: {args.transformation} / {args.condition}")
+    if args.baseline:
+        print("E-SSL Figure 1: baseline (vanilla SimCLR)")
+    else:
+        print(f"E-SSL Figure 1: {args.transformation} / {args.condition}")
     print("=" * 70)
     print(f"  Architecture:     {args.arch}")
-    print(f"  Transformation:   {args.transformation} ({spec.num_classes} classes)")
-    print(f"  Condition:        {args.condition}")
-    if args.condition == "sensitivity":
-        print(f"  Pred lambda:      {args.pred_lambda}")
+    if args.baseline:
+        print(f"  Mode:             baseline (no tested transformation, no pred head)")
+    else:
+        print(f"  Transformation:   {args.transformation} ({spec.num_classes} classes)")
+        print(f"  Condition:        {args.condition}")
+        if args.condition == "sensitivity":
+            print(f"  Pred lambda:      {args.pred_lambda}")
     print(f"  Epochs:           {args.epochs}")
     print(f"  Batch size:       {args.batch_size}")
     print(f"  Learning rate:    {args.lr:.4f} (base 0.3 * {args.batch_size}/256)")
@@ -187,7 +212,7 @@ def main():
 
     # Build model
     print(f"=> Creating model '{args.arch}'")
-    if args.condition == "invariance":
+    if args.baseline or args.condition == "invariance":
         model = SimCLR(
             base_encoder=models.__dict__[args.arch],
             dim=128,
@@ -224,11 +249,14 @@ def main():
 
     # Data loading
     traindir = os.path.join(args.data, "train")
-    essl_transform = ESSLTransform(
-        spec, args.condition, color_strength=args.color_strength
-    )
+    if args.baseline:
+        train_transform = BaselineTransform(color_strength=args.color_strength)
+    else:
+        train_transform = ESSLTransform(
+            spec, args.condition, color_strength=args.color_strength
+        )
 
-    train_dataset = datasets.ImageFolder(traindir, essl_transform)
+    train_dataset = datasets.ImageFolder(traindir, train_transform)
     print(f"=> Training dataset: {len(train_dataset)} images")
 
     train_loader = torch.utils.data.DataLoader(
@@ -241,10 +269,12 @@ def main():
     )
 
     # Training loop
+    use_invariance_loop = args.baseline or args.condition == "invariance"
+
     for epoch in range(start_epoch, args.epochs):
         lr = adjust_learning_rate(optimizer, epoch, args)
 
-        if args.condition == "invariance":
+        if use_invariance_loop:
             loss_avg = train_one_epoch_invariance(
                 train_loader, model, criterion, optimizer, epoch, args
             )
