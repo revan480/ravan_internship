@@ -18,9 +18,10 @@ EPOCHS=${EPOCHS:-500}
 EVAL_EPOCHS=${EVAL_EPOCHS:-200}
 MODE=${MODE:-all}                      # all | pretrain | eval
 
+# Paths are relative to the repo root (this script cd's there below).
 IN100=${IN100:-./imagenet100}
-CUB=${CUB:-../moco/cub200_prepared}
-FLOWERS=${FLOWERS:-../flowers102_prepared}
+CUB=${CUB:-./moco/cub200_prepared}
+FLOWERS=${FLOWERS:-./flowers102_prepared}
 
 TAG=${FRAMEWORK}_${EXPERIMENT}
 SAVE_DIR=${SAVE_DIR:-./relssl/checkpoints/${TAG}}
@@ -30,6 +31,11 @@ LOG=${LOG:-./relssl/logs/${TAG}.log}
 export CUDA_VISIBLE_DEVICES=${GPU}
 cd "$(dirname "$0")/../.."          # repo root (parent of relssl/)
 mkdir -p "$(dirname "$LOG")" "${SAVE_DIR}"
+
+# Ensure the repo-root imagenet100 symlink exists (matches the existing repos).
+if [ ! -e "${IN100}" ] && [ -d "./Moco-Imagenet/imagenet100" ]; then
+    ln -sf "$(pwd)/Moco-Imagenet/imagenet100" "${IN100}"
+fi
 
 if command -v conda >/dev/null 2>&1; then
     eval "$(conda shell.bash hook)"

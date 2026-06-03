@@ -36,6 +36,11 @@ echo "Phase-2 pilot: ${FRAMEWORK} / ${ARCH} / ${EPOCHS} epochs"
 echo "Started: $(date)"
 echo "=========================================="
 
+# Ensure the repo-root imagenet100 symlink exists (matches the existing repos).
+if [ ! -e "${SRC}" ] && [ -d "./Moco-Imagenet/imagenet100" ]; then
+    ln -sf "$(pwd)/Moco-Imagenet/imagenet100" "${SRC}"
+fi
+
 # Build the symlinked pilot subset if missing.
 if [ ! -d "${SUBSET}/train" ]; then
     python relssl/scripts/make_pilot_subset.py --src "${SRC}" --dst "${SUBSET}" \
