@@ -1,0 +1,38 @@
+# Shared defaults. Merged with configs/framework/<fw>.yaml then
+# configs/experiment/<exp>.yaml, then CLI overrides (train.py).
+
+arch: resnet50
+data: ./imagenet100
+epochs: 500
+batch_size: 256
+workers: 8
+momentum: 0.9
+weight_decay: 1.0e-4
+seed: 42
+save_dir: ./checkpoints/default
+save_freq: 50
+print_freq: 20
+
+# Learning-rate control (single selector; no conflicting cos/schedule pair).
+lr: 0.3
+lr_scale_by_batch: true        # lr *= batch_size / 256
+lr_schedule: cosine            # cosine | step
+schedule: [300, 400]           # step-decay milestones (used only when lr_schedule == step)
+
+# Relational head.
+rel_lambda: 0.5                # experiment overrides: baseline -> 0.0
+rel_head_hidden: 2048
+rel_factors: [rotation, hflip, brightness, contrast, saturation, hue, grayscale, blur]
+
+# Augmentation.
+aug_sharing: true              # true -> RelPairTransform; false -> StandardTwoViewTransform
+crop_scale: [0.2, 1.0]
+color_strength: 1.0
+p_same: 0.5
+blur_mode: sigma               # sigma | binary
+delta: {brightness: 0.2, contrast: 0.2, saturation: 0.2, hue: 0.05, blur: 0.4}
+# used only by the standard (baseline) transform:
+use_rotation: false
+use_color: true
+
+framework: simclr              # overridden by configs/framework/<fw>.yaml
