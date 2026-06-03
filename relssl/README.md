@@ -35,6 +35,25 @@ Saturation/hue are masked out of the loss whenever either view is grayscale.
 - `relpred`    — the method (sharing loader + head, `rel_lambda=0.5`).
 - `relpred_lambda0` — ablation: sharing loader, head off. (Not a pure-SSL control.)
 
+## Control panel — `relssl/run.sh` (recommended entrypoint)
+
+One script to configure, **preview, and run** everything. Edit the CONFIG block at
+the top (or override any value with an env var), preview with `--dry-run` (prints the
+prerequisite checklist, the resolved config, and the exact commands — runs nothing),
+then run it (it asks for confirmation first, unless `--yes`).
+
+```bash
+# 1) see what WILL happen, without running anything:
+bash relssl/run.sh --dry-run
+
+# 2) run it (confirm prompt):       3) or pick a mode / override knobs:
+bash relssl/run.sh                  MODE=pilot GPU=1 EPOCHS=50 bash relssl/run.sh --dry-run
+```
+
+Modes: `test` (CPU unit tests only) · `pilot` (short ResNet-18 run + automated gate) ·
+`pipeline` (full pretrain→4 evals per framework/experiment) · `matrix` (full SLURM grid).
+A real run aborts if any prerequisite check fails; `--dry-run` only reports them.
+
 ## Quick start (cluster, `pytorch_2_0_0`)
 ```bash
 # Phase-2 sanity pilot + automated gate (resnet18, IN-100 subset)
