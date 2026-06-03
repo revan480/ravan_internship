@@ -23,7 +23,7 @@ EPOCHS=${EPOCHS:-500}
 
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}"
 source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate ts_ssl_gpu
+conda activate "${CONDA_ENV:-pytorch_2_0_0}"
 
 MODE=eval FRAMEWORK="${FRAMEWORK}" EXPERIMENT="${EXPERIMENT}" ARCH="${ARCH}" \
     EPOCHS="${EPOCHS}" ${CKPT:+CKPT="${CKPT}"} bash relssl/scripts/run_pipeline.sh

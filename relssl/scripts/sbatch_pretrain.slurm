@@ -23,7 +23,7 @@ IN100=${IN100:-./imagenet100}
 # repo root = parent of the relssl/ package
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}"
 source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate ts_ssl_gpu
+conda activate "${CONDA_ENV:-pytorch_2_0_0}"
 
 # Ensure the ImageNet-100 symlink exists (matches the existing repos' convention).
 [ -e "${IN100}" ] || ln -sf "$(pwd)/Moco-Imagenet/imagenet100" "${IN100}"

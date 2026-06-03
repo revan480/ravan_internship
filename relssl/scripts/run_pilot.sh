@@ -19,16 +19,17 @@ N_CLASSES=${N_CLASSES:-10}
 N_PER_CLASS=${N_PER_CLASS:-200}
 SAVE_DIR=${SAVE_DIR:-./relssl/checkpoints/pilot_${FRAMEWORK}}
 LOG=${LOG:-./relssl/logs/pilot_${FRAMEWORK}.log}
+CONDA_ENV=${CONDA_ENV:-pytorch_2_0_0}
 
 export CUDA_VISIBLE_DEVICES=${GPU}
 # cd to repo root (parent of relssl/)
 cd "$(dirname "$0")/../.."
 mkdir -p "$(dirname "$LOG")"
 
-# conda env (the existing repos use ts_ssl_gpu)
+# conda env (override with CONDA_ENV=...)
 if command -v conda >/dev/null 2>&1; then
     eval "$(conda shell.bash hook)"
-    conda activate ts_ssl_gpu || echo "WARN: could not activate ts_ssl_gpu"
+    conda activate "${CONDA_ENV}" || echo "WARN: could not activate ${CONDA_ENV} (continuing in current env)"
 fi
 
 echo "=========================================="
@@ -41,11 +42,10 @@ if [ ! -e "${SRC}" ] && [ -d "./Moco-Imagenet/imagenet100" ]; then
     ln -sf "$(pwd)/Moco-Imagenet/imagenet100" "${SRC}"
 fi
 
-# Build the symlinked pilot subset if missing.
-if [ ! -d "${SUBSET}/train" ]; then
-    python relssl/scripts/make_pilot_subset.py --src "${SRC}" --dst "${SUBSET}" \
-        --n-classes "${N_CLASSES}" --n-per-class "${N_PER_CLASS}" --splits train val
-fi
+# Build the symlinked pilot subset (idempotent: existing symlinks are skipped, so a
+# partial subset from an interrupted run is simply completed).
+python relssl/scripts/make_pilot_subset.py --src "${SRC}" --dst "${SUBSET}" \
+    --n-classes "${N_CLASSES}" --n-per-class "${N_PER_CLASS}" --splits train val
 
 # Pilot pretraining (tee to log + console, matching the repo convention).
 python -m relssl.train --framework "${FRAMEWORK}" --experiment relpred \

@@ -23,6 +23,7 @@ IN100=${IN100:-./imagenet100}
 CUB=${CUB:-./moco/cub200_prepared}
 FLOWERS=${FLOWERS:-./flowers102_prepared}
 
+CONDA_ENV=${CONDA_ENV:-pytorch_2_0_0}
 TAG=${FRAMEWORK}_${EXPERIMENT}
 SAVE_DIR=${SAVE_DIR:-./relssl/checkpoints/${TAG}}
 CKPT=${CKPT:-${SAVE_DIR}/checkpoint_$(printf '%04d' "${EPOCHS}").pth.tar}
@@ -39,7 +40,7 @@ fi
 
 if command -v conda >/dev/null 2>&1; then
     eval "$(conda shell.bash hook)"
-    conda activate ts_ssl_gpu || echo "WARN: could not activate ts_ssl_gpu"
+    conda activate "${CONDA_ENV}" || echo "WARN: could not activate ${CONDA_ENV} (continuing in current env)"
 fi
 
 log() { echo "$@" | tee -a "${LOG}"; }

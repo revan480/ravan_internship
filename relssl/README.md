@@ -8,7 +8,7 @@ to both views (binary same/different). Framework-agnostic across SimCLR / MoCo /
 
 This is a standalone sibling of the existing `*-Imagenet*` repos; it does not modify
 any of them. It reuses their conventions (ImageNet-100 / CUB-200 / Flowers-102 data
-layout, `ts_ssl_gpu` conda env, "Best Val" logging, checkpoint format).
+layout, `pytorch_2_0_0` conda env, "Best Val" logging, checkpoint format).
 
 ## Layout
 ```
@@ -35,7 +35,7 @@ Saturation/hue are masked out of the loss whenever either view is grayscale.
 - `relpred`    — the method (sharing loader + head, `rel_lambda=0.5`).
 - `relpred_lambda0` — ablation: sharing loader, head off. (Not a pure-SSL control.)
 
-## Quick start (cluster, `ts_ssl_gpu`)
+## Quick start (cluster, `pytorch_2_0_0`)
 ```bash
 # Phase-2 sanity pilot + automated gate (resnet18, IN-100 subset)
 GPU=0 bash relssl/scripts/run_pilot.sh
