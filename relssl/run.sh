@@ -66,15 +66,15 @@ warn() { printf '  [warn] %s\n' "$*"; }
 CHECK_FAILED=0
 preflight() {
     bold "Prerequisite checks"
-    # conda env
-    if command -v conda >/dev/null 2>&1; then
-        if conda env list | grep -qE "^${CONDA_ENV}\b|/${CONDA_ENV}\$"; then
-            ok "conda env '${CONDA_ENV}' found"
-        else
-            bad "conda env '${CONDA_ENV}' NOT found (conda env list)"; CHECK_FAILED=1
-        fi
+    # conda env (informational only — the python-deps import below is the real gate).
+    # Read $CONDA_DEFAULT_ENV directly; piping `conda env list` into grep can make
+    # conda crash with a spurious BrokenPipeError.
+    if [ "${CONDA_DEFAULT_ENV:-}" = "${CONDA_ENV}" ]; then
+        ok "conda env '${CONDA_ENV}' is active"
+    elif [ -n "${CONDA_DEFAULT_ENV:-}" ]; then
+        warn "active conda env is '${CONDA_DEFAULT_ENV}', not '${CONDA_ENV}' (relying on the python-deps check)"
     else
-        warn "conda not on PATH (assuming the right env is already active)"
+        warn "no active conda env detected (relying on the python-deps check)"
     fi
     # python deps
     if python -c "import torch, torchvision, numpy, PIL, yaml" 2>/dev/null; then
