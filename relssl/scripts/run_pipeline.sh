@@ -24,6 +24,7 @@ CUB=${CUB:-./moco/cub200_prepared}
 FLOWERS=${FLOWERS:-./flowers102_prepared}
 
 CONDA_ENV=${CONDA_ENV:-pytorch_2_0_0}
+CONFIG_OVERLAY=${CONFIG_OVERLAY:-}        # optional YAML overlay for YAML-only knobs (relctl)
 TAG=${FRAMEWORK}_${EXPERIMENT}
 SAVE_DIR=${SAVE_DIR:-./relssl/checkpoints/${TAG}}
 CKPT=${CKPT:-${SAVE_DIR}/checkpoint_$(printf '%04d' "${EPOCHS}").pth.tar}
@@ -55,7 +56,8 @@ if [ "${MODE}" = "all" ] || [ "${MODE}" = "pretrain" ]; then
     log "STEP 1: Pretrain (${EPOCHS} epochs)"
     python -m relssl.train --framework "${FRAMEWORK}" --experiment "${EXPERIMENT}" \
         --arch "${ARCH}" --data "${IN100}" --epochs "${EPOCHS}" \
-        --save-dir "${SAVE_DIR}" 2>&1 | tee -a "${LOG}"
+        --save-dir "${SAVE_DIR}" \
+        ${CONFIG_OVERLAY:+--config-overlay "${CONFIG_OVERLAY}"} 2>&1 | tee -a "${LOG}"
 fi
 
 if [ "${MODE}" = "all" ] || [ "${MODE}" = "eval" ]; then

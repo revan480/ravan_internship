@@ -4,3 +4,7 @@ checkpoints/
 logs/
 results.csv
 imagenet100
+pilot_in100/
+# relctl runtime state (jobs registry, generated overlays). Saved profiles under
+# relctl/profiles/ ARE tracked so experiments are reproducible/shareable.
+.relctl/

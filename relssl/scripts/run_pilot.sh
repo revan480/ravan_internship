@@ -20,6 +20,7 @@ N_PER_CLASS=${N_PER_CLASS:-200}
 SAVE_DIR=${SAVE_DIR:-./relssl/checkpoints/pilot_${FRAMEWORK}}
 LOG=${LOG:-./relssl/logs/pilot_${FRAMEWORK}.log}
 CONDA_ENV=${CONDA_ENV:-pytorch_2_0_0}
+CONFIG_OVERLAY=${CONFIG_OVERLAY:-}        # optional YAML overlay for YAML-only knobs (relctl)
 
 export CUDA_VISIBLE_DEVICES=${GPU}
 # cd to repo root (parent of relssl/)
@@ -50,7 +51,8 @@ python relssl/scripts/make_pilot_subset.py --src "${SRC}" --dst "${SUBSET}" \
 # Pilot pretraining (tee to log + console, matching the repo convention).
 python -m relssl.train --framework "${FRAMEWORK}" --experiment relpred \
     --arch "${ARCH}" --data "${SUBSET}" --epochs "${EPOCHS}" \
-    --batch-size 256 --workers 8 --save-dir "${SAVE_DIR}" 2>&1 | tee "${LOG}"
+    --batch-size 256 --workers 8 --save-dir "${SAVE_DIR}" \
+    ${CONFIG_OVERLAY:+--config-overlay "${CONFIG_OVERLAY}"} 2>&1 | tee "${LOG}"
 
 echo "=========================================="
 echo "Pilot gate check"

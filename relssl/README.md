@@ -35,12 +35,45 @@ Saturation/hue are masked out of the loss whenever either view is grayscale.
 - `relpred`    — the method (sharing loader + head, `rel_lambda=0.5`).
 - `relpred_lambda0` — ablation: sharing loader, head off. (Not a pure-SSL control.)
 
-## Control panel — `relssl/run.sh` (recommended entrypoint)
+## Interactive control panel — `relctl` (recommended)
 
-One script to configure, **preview, and run** everything. Edit the CONFIG block at
-the top (or override any value with an env var), preview with `--dry-run` (prints the
-prerequisite checklist, the resolved config, and the exact commands — runs nothing),
-then run it (it asks for confirmation first, unless `--yes`).
+`relctl` is a full interactive TUI for driving everything from one place over SSH —
+edit **any** knob, run **any** action, and manage long jobs, without hand-editing
+files or remembering flags.
+
+```bash
+python -m relssl.relctl            # auto: Rich tier if installed, else plain
+python -m relssl.relctl --plain    # force the zero-dependency plain tier
+python -m relssl.relctl --validate # check the knob catalog vs configs/, then exit
+```
+
+- **Configure** — 7 grouped editors expose every knob with live validation: globals,
+  the active framework's block (e.g. SimCLR `temperature`, MoCo `moco_k`, BYOL
+  `tau_base`), optimizer/LR (with a live `base_lr` readout), augmentation, the
+  relational head (incl. the per-factor `delta` dict and the count-locked
+  `rel_factors`), eval/probe hyperparameters, and runtime/paths/pilot.
+- **Run** — pilot · pipeline · pretrain-only · eval-only · single eval step · matrix
+  (SLURM) · resume · make-subset · gate-check · extract-results · tests. The launch
+  screen shows the **resolved** config, the exact command(s), the generated YAML
+  overlay, and `run.sh`'s preflight checklist before you commit.
+- **Jobs** — launches long runs in the background (`nohup`, or `tmux` if present;
+  `sbatch` for matrix) and returns immediately. List/tail/stop, with live epoch +
+  per-factor progress scraped from the logs. The registry survives SSH drops.
+- **Profiles** — save/load named configurations (tracked in `relctl/profiles/`).
+
+Zero hard dependencies beyond what the `pytorch_2_0_0` env already has (stdlib +
+pyyaml). `pip install --user rich` upgrades the rendering automatically. Edited
+YAML-only knobs travel to `train.py` via the new `--config-overlay` flag, so the
+committed `configs/*.yaml` are never mutated. `python -m relssl.train --print-config`
+prints the fully-resolved merged config (what `relctl`'s **verify** uses).
+
+## Static control panel — `relssl/run.sh` (scriptable / non-interactive)
+
+A single bash script to configure, **preview, and run** everything — handy for
+scripts and SLURM. Edit the CONFIG block at the top (or override any value with an
+env var), preview with `--dry-run` (prints the prerequisite checklist, the resolved
+config, and the exact commands — runs nothing), then run it (it asks for confirmation
+first, unless `--yes`). `relctl` reuses this script's preflight + dry-run.
 
 ```bash
 # 1) see what WILL happen, without running anything:

@@ -61,6 +61,12 @@ def load_cfg(args):
     if args.experiment:
         _deep_merge(cfg, _load_yaml(os.path.join(CONFIG_DIR, "experiment", f"{args.experiment}.yaml")))
 
+    # Optional overlay for YAML-only knobs (merged after experiment, before CLI).
+    # _deep_merge is recursive, so a partial `delta: {hue: 0.08}` overlay updates
+    # just that sub-key and leaves the other delta entries intact.
+    if getattr(args, "config_overlay", None):
+        _deep_merge(cfg, _load_yaml(args.config_overlay))
+
     # CLI overrides (only when explicitly provided)
     overrides = {
         "data": args.data, "arch": args.arch, "epochs": args.epochs,
@@ -193,12 +199,31 @@ def main():
     parser.add_argument("--color-strength", type=float, default=None)
     parser.add_argument("--blur-mode", default=None, choices=["sigma", "binary"])
     parser.add_argument("--resume", default="")
+    # Extra YAML merged after the experiment config, before the CLI overrides
+    # below. This is the hook for YAML-only knobs (momentum, lr_schedule, the
+    # per-factor `delta` dict, framework-specific temperature/tau_base/moco_k, ...)
+    # that have no dedicated CLI flag. Default-off: no overlay == identical behaviour.
+    parser.add_argument("--config-overlay", default=None,
+                        help="path to an extra YAML merged after configs/experiment/<exp>.yaml "
+                             "and before CLI overrides (for YAML-only knobs)")
+    parser.add_argument("--print-config", action="store_true",
+                        help="print the fully-resolved merged config (incl. computed base_lr) "
+                             "as YAML and exit, without training")
     args = parser.parse_args()
 
     cfg = load_cfg(args)
 
     # Scale LR per framework convention.
     base_lr = cfg["lr"] * (cfg["batch_size"] / 256 if cfg["lr_scale_by_batch"] else 1.0)
+
+    if args.print_config:
+        # Resolved config (base <- framework <- experiment <- overlay <- CLI) plus
+        # the derived base_lr, as YAML — consumed by the relctl control panel to
+        # show exactly what a run will use. No torch/data work happens here.
+        shown = dict(cfg)
+        shown["base_lr"] = round(base_lr, 6)
+        print(yaml.safe_dump(shown, default_flow_style=False, sort_keys=False), end="")
+        return
 
     print("=" * 70)
     print("relssl pretraining")
