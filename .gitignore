@@ -20,10 +20,11 @@ checkpoints/
 *.pt
 *.ckpt
 
-# Data
+# Data — keep the datasets/ folder + its README in git, ignore the actual data
 imagenet*/
 data/
-datasets/
+datasets/*
+!datasets/README.md
 
 # Logs
 *.log
