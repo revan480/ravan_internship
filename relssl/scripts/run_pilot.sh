@@ -13,7 +13,7 @@ GPU=${GPU:-0}
 FRAMEWORK=${FRAMEWORK:-simclr}
 EPOCHS=${EPOCHS:-5}
 ARCH=${ARCH:-resnet18}
-SRC=${SRC:-./imagenet100}                 # full IN-100 (symlinked as in the existing scripts)
+SRC=${SRC:-./datasets/imagenet100}        # full IN-100 dataset root
 SUBSET=${SUBSET:-./relssl/pilot_in100}    # symlinked pilot subset
 N_CLASSES=${N_CLASSES:-10}
 N_PER_CLASS=${N_PER_CLASS:-200}
@@ -37,11 +37,6 @@ echo "=========================================="
 echo "Phase-2 pilot: ${FRAMEWORK} / ${ARCH} / ${EPOCHS} epochs"
 echo "Started: $(date)"
 echo "=========================================="
-
-# Ensure the repo-root imagenet100 symlink exists (matches the existing repos).
-if [ ! -e "${SRC}" ] && [ -d "./Moco-Imagenet/imagenet100" ]; then
-    ln -sf "$(pwd)/Moco-Imagenet/imagenet100" "${SRC}"
-fi
 
 # Build the symlinked pilot subset (idempotent: existing symlinks are skipped, so a
 # partial subset from an interrupted run is simply completed).

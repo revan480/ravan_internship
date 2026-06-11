@@ -30,9 +30,9 @@ GPU="${GPU:-0}"                                # CUDA device index
 CONDA_ENV="${CONDA_ENV:-pytorch_2_0_0}"       # conda env to activate
 
 # Data (paths are relative to the repo root)
-IN100="${IN100:-./imagenet100}"
-CUB="${CUB:-./moco/cub200_prepared}"
-FLOWERS="${FLOWERS:-./flowers102_prepared}"
+IN100="${IN100:-./datasets/imagenet100}"
+CUB="${CUB:-./datasets/cub200_prepared}"
+FLOWERS="${FLOWERS:-./datasets/flowers102_prepared}"
 
 # Pilot-only knobs
 PILOT_CLASSES="${PILOT_CLASSES:-20}"
@@ -93,8 +93,8 @@ preflight() {
     # data
     case "$MODE" in
         pilot|pipeline|matrix)
-            if [ -d "${IN100}/train" ] || [ -d "./Moco-Imagenet/imagenet100/train" ]; then
-                ok "ImageNet-100 reachable (${IN100} or ./Moco-Imagenet/imagenet100)"
+            if [ -d "${IN100}/train" ]; then
+                ok "ImageNet-100 found (${IN100})"
             else
                 bad "ImageNet-100 not found at ${IN100}/train"; CHECK_FAILED=1
             fi ;;

@@ -71,7 +71,7 @@ class Knob:
 
 KNOBS = [
     # ---- Data & run (train domain) ----
-    Knob("data", "data", "train", "path", "./imagenet100", cli_flag="--data",
+    Knob("data", "data", "train", "path", "./datasets/imagenet100", cli_flag="--data",
          doc="Pretraining dataset root (ImageFolder; loader appends /train)."),
     Knob("epochs", "data", "train", "int", 500, valid=(1, None), cli_flag="--epochs",
          doc="Pretraining epochs (also the cosine-LR and BYOL tau denominators)."),
@@ -221,11 +221,11 @@ KNOBS = [
          doc="CUDA device index (CUDA_VISIBLE_DEVICES)."),
     Knob("conda_env", "runtime", "runtime", "str", "pytorch_2_0_0",
          doc="Conda env the scripts activate."),
-    Knob("IN100", "runtime", "paths", "path", "./imagenet100",
+    Knob("IN100", "runtime", "paths", "path", "./datasets/imagenet100",
          doc="ImageNet-100 root (pipeline/pilot)."),
-    Knob("CUB", "runtime", "paths", "path", "./moco/cub200_prepared",
+    Knob("CUB", "runtime", "paths", "path", "./datasets/cub200_prepared",
          doc="CUB-200 root (pipeline STEP 4)."),
-    Knob("FLOWERS", "runtime", "paths", "path", "./flowers102_prepared",
+    Knob("FLOWERS", "runtime", "paths", "path", "./datasets/flowers102_prepared",
          doc="Flowers-102 root (pipeline STEP 5)."),
     Knob("pilot_classes", "runtime", "pilot", "int", 20, valid=(1, None),
          doc="Pilot subset: classes (make_pilot_subset --n-classes)."),

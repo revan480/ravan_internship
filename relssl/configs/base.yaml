@@ -2,7 +2,7 @@
 # configs/experiment/<exp>.yaml, then CLI overrides (train.py).
 
 arch: resnet50
-data: ./imagenet100
+data: ./datasets/imagenet100
 epochs: 500
 batch_size: 256
 workers: 8

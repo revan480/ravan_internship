@@ -105,10 +105,14 @@ python relssl/scripts/extract_results.py --logs-dir ./relssl/logs --out ./relssl
 Pretraining defaults match each framework's original (`main_*.py`): SimCLR/BYOL
 `lr 0.3` ×bs/256, cosine; MoCo/LooC `lr 0.03`, step-decay [300,400]; bs 256, 500 epochs.
 
-## Data paths (defaults, relative to repo root)
-- ImageNet-100: `./imagenet100` (symlink to `Moco-Imagenet/imagenet100`)
-- CUB-200: `../moco/cub200_prepared`
-- Flowers-102: `../flowers102_prepared`
+## Data paths (defaults)
+All datasets live under a single `datasets/` folder next to `relssl/`:
+- ImageNet-100: `./datasets/imagenet100`   (`train/`, `val/`)
+- CUB-200: `./datasets/cub200_prepared`     (`train/`, `val/`)
+- Flowers-102: `./datasets/flowers102_prepared` (`train/`, `test/`)
+
+Override any of them in relctl's **Runtime** group, or via the `IN100`/`CUB`/`FLOWERS`
+env vars for the scripts.
 
 ## Tests
 ```bash
