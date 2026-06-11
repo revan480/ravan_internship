@@ -162,7 +162,7 @@ class App:
             ui.rule()
             ui.print(ui.dim("  <#> edit · d=diff vs defaults · h <#>=help · b=back"))
             c = ui.ask("edit").strip().lower()
-            if c in ("b", "", "q"):
+            if c in ("b", "back", "", "q"):
                 return
             if c == "d":
                 self._show_diff()
@@ -228,7 +228,7 @@ class App:
             ui.note("info", "all 5 keys are required at runtime; relctl always writes the full dict")
             ui.rule()
             c = ui.ask("letter to edit (b=back)").strip().lower()
-            if c in ("b", "", "q"):
+            if c in ("b", "back", "", "q"):
                 return
             idx = ord(c) - ord('a')
             if 0 <= idx < len(DELTA_KEYS):
@@ -279,7 +279,7 @@ class App:
         for i, ch in enumerate(choices, 1):
             ui.print("   %d) %s %s" % (i, ch, "  <- current" if ch == current else ""))
         c = ui.ask("pick (b=back)").strip().lower()
-        if c in ("b", ""):
+        if c in ("b", "back", ""):
             return
         if c.isdigit() and 1 <= int(c) <= len(choices):
             try:
@@ -297,7 +297,7 @@ class App:
                 for i, a in enumerate(ACTIONS, 1)]
         ui.table(["#", "action", "mode", "prerequisite"], rows)
         c = ui.ask("pick (b=back)").strip().lower()
-        if c in ("b", ""):
+        if c in ("b", "back", ""):
             return
         if c.isdigit() and 1 <= int(c) <= len(ACTIONS):
             a = ACTIONS[int(c) - 1]
@@ -385,11 +385,17 @@ class App:
 
         if plan.preflight_mode:
             ui.rule("preflight (run.sh --dry-run)")
-            checks, _ = preflight.run(self.repo_root, plan.preflight_mode, preflight.env_for(m))
-            for level, msg in checks:
-                ui.note(level, msg)
-            if any(lv == "fail" for lv, _ in checks):
-                ui.note("err", "a real run.sh run would ABORT on the [FAIL]s above")
+            ui.note("info", "checking prerequisites… (the first run imports torch — "
+                            "can take ~10-30s; Ctrl-C to skip)")
+            try:
+                checks, _ = preflight.run(self.repo_root, plan.preflight_mode,
+                                          preflight.env_for(m))
+                for level, msg in checks:
+                    ui.note(level, msg)
+                if any(lv == "fail" for lv, _ in checks):
+                    ui.note("err", "a real run.sh run would ABORT on the [FAIL]s above")
+            except KeyboardInterrupt:
+                ui.note("warn", "preflight skipped (Ctrl-C) — launch options below")
 
         ui.rule()
         if plan.background:
@@ -399,7 +405,7 @@ class App:
             ui.print(ui.dim("   x) run now (foreground)   d) bash dry-run   b) back"))
         c = ui.ask("choose").strip().lower()
 
-        if c == "b" or c == "":
+        if c in ("b", "back", ""):
             return
         if c == "d":
             self._bash_dry_run(plan)
@@ -470,7 +476,7 @@ class App:
             ui.print(ui.dim("  t <#> tail -f · l <#> last40 · p <#> perfactor · s <#> stop · "
                             "k <#> kill · c clear-finished · r refresh · b back"))
             c = ui.ask("job").strip().lower()
-            if c in ("b", "", "q"):
+            if c in ("b", "back", "", "q"):
                 return
             if c == "r":
                 continue
@@ -533,7 +539,7 @@ class App:
             ui.rule()
             ui.print(ui.dim("  x) extract logs -> results.csv   o) show path   b) back"))
             c = ui.ask("results").strip().lower()
-            if c in ("b", "", "q"):
+            if c in ("b", "back", "", "q"):
                 return
             if c == "x":
                 ui.rule()
