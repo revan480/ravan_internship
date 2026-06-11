@@ -106,10 +106,10 @@ Pretraining defaults match each framework's original (`main_*.py`): SimCLR/BYOL
 `lr 0.3` ×bs/256, cosine; MoCo/LooC `lr 0.03`, step-decay [300,400]; bs 256, 500 epochs.
 
 ## Data paths (defaults)
-All datasets live under a single `datasets/` folder next to `relssl/`:
-- ImageNet-100: `./datasets/imagenet100`   (`train/`, `val/`)
-- CUB-200: `./datasets/cub200_prepared`     (`train/`, `val/`)
-- Flowers-102: `./datasets/flowers102_prepared` (`train/`, `test/`)
+All datasets live under `relssl/datasets/` (run commands from the folder containing `relssl/`):
+- ImageNet-100: `./relssl/datasets/imagenet100`   (`train/`, `val/`)
+- CUB-200: `./relssl/datasets/cub200_prepared`     (`train/`, `val/`)
+- Flowers-102: `./relssl/datasets/flowers102_prepared` (`train/`, `test/`)
 
 Override any of them in relctl's **Runtime** group, or via the `IN100`/`CUB`/`FLOWERS`
 env vars for the scripts.

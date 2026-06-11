@@ -2,7 +2,7 @@
 Unified, config-driven pretraining entrypoint for relssl.
 
     python relssl/train.py --framework simclr --experiment relpred \
-        --data ./datasets/imagenet100 --arch resnet50 --save-dir ./checkpoints/simclr_relpred
+        --data ./relssl/datasets/imagenet100 --arch resnet50 --save-dir ./checkpoints/simclr_relpred
 
 Config resolution: configs/base.yaml  <-  configs/framework/<fw>.yaml  <-
 configs/experiment/<exp>.yaml  <-  CLI overrides.

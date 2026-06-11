@@ -4,7 +4,7 @@ Build a small ImageNet-100 subset for a fast Phase-2 pilot, using SYMLINKS only
 convention, e.g. `ln -sf .../imagenet100`).
 
     python relssl/scripts/make_pilot_subset.py \
-        --src ./datasets/imagenet100 --dst ./relssl/pilot_in100 \
+        --src ./relssl/datasets/imagenet100 --dst ./relssl/pilot_in100 \
         --n-classes 10 --n-per-class 100 --splits train val
 
 The result is an ImageFolder-compatible tree of symlinks under --dst.

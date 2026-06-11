@@ -19,9 +19,9 @@ EVAL_EPOCHS=${EVAL_EPOCHS:-200}
 MODE=${MODE:-all}                      # all | pretrain | eval
 
 # Paths are relative to the repo root (this script cd's there below).
-IN100=${IN100:-./datasets/imagenet100}
-CUB=${CUB:-./datasets/cub200_prepared}
-FLOWERS=${FLOWERS:-./datasets/flowers102_prepared}
+IN100=${IN100:-./relssl/datasets/imagenet100}
+CUB=${CUB:-./relssl/datasets/cub200_prepared}
+FLOWERS=${FLOWERS:-./relssl/datasets/flowers102_prepared}
 
 CONDA_ENV=${CONDA_ENV:-pytorch_2_0_0}
 CONFIG_OVERLAY=${CONFIG_OVERLAY:-}        # optional YAML overlay for YAML-only knobs (relctl)

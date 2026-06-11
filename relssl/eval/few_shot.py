@@ -5,7 +5,7 @@ K-shot value runs N trials of a linear classifier (Adam). Only the checkpoint
 loader changed (relssl.eval.common.load_backbone). Output line format
 "  {k}-shot: {mean:.1f}% (± {ci95:.1f}%)" is preserved for extract_results.
 
-    python -m relssl.eval.few_shot --data ./datasets/flowers102_prepared \
+    python -m relssl.eval.few_shot --data ./relssl/datasets/flowers102_prepared \
         --pretrained ./relssl/checkpoints/simclr_relpred/checkpoint_0500.pth.tar
 """
 

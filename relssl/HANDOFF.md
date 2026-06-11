@@ -39,46 +39,49 @@ cd ravan_internship
 #   cd ravan_internship && git sparse-checkout set relssl
 ```
 
-Then place a **`datasets/` folder next to `relssl/`** and run every command from the
-folder that *contains* `relssl/` (here, `ravan_internship/`) — not from inside `relssl/`:
+The datasets live **inside** `relssl/` (at `relssl/datasets/`), so the single `relssl/`
+folder is the whole project. Run every command from the folder that *contains*
+`relssl/` — not from inside `relssl/`:
 
 ```
-ravan_internship/        # <-- run all commands from here ("the working dir")
-├── relssl/              # the code (from git)
-└── datasets/            # the three datasets (Section 3)
+<working dir>/           # <-- run all commands from here
+└── relssl/              # the only folder you need from GitHub
+    ├── ...              # code (train.py, relctl/, eval/, scripts/, configs/)
+    └── datasets/        # the three datasets go here (Section 3)
 ```
 
-Datasets and checkpoints are **git-ignored** (too large), so they are *not* in the
-clone — they are shipped separately (Section 3).
+The actual data + checkpoints are **git-ignored** (too large), so they are *not* in the
+clone — only the `relssl/datasets/README.md` placeholder is. You add the data (Section 3).
 
 ---
 
 ## 3. Datasets
 
-All three datasets live under **one `datasets/` folder** (a sibling of `relssl/`). Each
-is a standard `ImageFolder` tree (`split/<class>/*.jpg`).
+All three datasets live under **`relssl/datasets/`**. Each is a standard `ImageFolder`
+tree (`split/<class>/*.jpg`).
 
 | Dataset | Used for | Location (relative to the working dir) | Sub-folders |
 |---|---|---|---|
-| **ImageNet-100** | pretraining + IN-100 linear/rotation eval | `./datasets/imagenet100/` | `train/`, `val/` |
-| **CUB-200-2011** | CUB-200 linear eval | `./datasets/cub200_prepared/` | `train/`, `val/` |
-| **Flowers-102** | few-shot eval | `./datasets/flowers102_prepared/` | `train/`, `test/` |
+| **ImageNet-100** | pretraining + IN-100 linear/rotation eval | `./relssl/datasets/imagenet100/` | `train/`, `val/` |
+| **CUB-200-2011** | CUB-200 linear eval | `./relssl/datasets/cub200_prepared/` | `train/`, `val/` |
+| **Flowers-102** | few-shot eval | `./relssl/datasets/flowers102_prepared/` | `train/`, `test/` |
 
 Final layout the code expects:
 
 ```
-<working dir>/                       # run all commands from here
-├── relssl/                          # the code
-└── datasets/
-    ├── imagenet100/                 # ImageNet-100
-    │   ├── train/<synset>/*.JPEG
-    │   └── val/<synset>/*.JPEG
-    ├── cub200_prepared/             # CUB-200
-    │   ├── train/<class>/*.jpg
-    │   └── val/<class>/*.jpg
-    └── flowers102_prepared/         # Flowers-102
-        ├── train/<class>/*.jpg
-        └── test/<class>/*.jpg
+<working dir>/                           # run all commands from here
+└── relssl/
+    ├── ...                              # code
+    └── datasets/
+        ├── imagenet100/                 # ImageNet-100
+        │   ├── train/<synset>/*.JPEG
+        │   └── val/<synset>/*.JPEG
+        ├── cub200_prepared/             # CUB-200
+        │   ├── train/<class>/*.jpg
+        │   └── val/<class>/*.jpg
+        └── flowers102_prepared/         # Flowers-102
+            ├── train/<class>/*.jpg
+            └── test/<class>/*.jpg
 ```
 
 ### 3a. Packaging + uploading to Google Drive (the person who HAS the data)
@@ -109,17 +112,16 @@ pip install gdown             # one-time
 # grab all three archives from the shared Drive folder
 gdown --folder "https://drive.google.com/drive/folders/<FOLDER_ID>"
 
-# extract all three INTO ./datasets/  (tar xf auto-detects format)
-mkdir -p datasets
-tar xf imagenet100.tar         -C datasets   # -> ./datasets/imagenet100/
-tar xf cub200_prepared.tar     -C datasets   # -> ./datasets/cub200_prepared/
-tar xf flowers102_prepared.tar -C datasets   # -> ./datasets/flowers102_prepared/
+# extract all three INTO ./relssl/datasets/  (tar xf auto-detects format)
+tar xf imagenet100.tar         -C relssl/datasets   # -> relssl/datasets/imagenet100/
+tar xf cub200_prepared.tar     -C relssl/datasets   # -> relssl/datasets/cub200_prepared/
+tar xf flowers102_prepared.tar -C relssl/datasets   # -> relssl/datasets/flowers102_prepared/
 ```
 
 Verify the layout (must print three "OK" lines):
 
 ```bash
-for p in datasets/imagenet100/train datasets/cub200_prepared/train datasets/flowers102_prepared/train; do
+for p in relssl/datasets/imagenet100/train relssl/datasets/cub200_prepared/train relssl/datasets/flowers102_prepared/train; do
   [ -d "$p" ] && echo "OK   $p" || echo "MISSING $p"
 done
 ```
@@ -240,13 +242,13 @@ MODE=eval     GPU=0 FRAMEWORK=simclr EXPERIMENT=relpred bash relssl/scripts/run_
 
 # Direct entrypoints (full control over every flag)
 python -m relssl.train --framework simclr --experiment relpred \
-    --arch resnet50 --data ./datasets/imagenet100 --epochs 500 \
+    --arch resnet50 --data ./relssl/datasets/imagenet100 --epochs 500 \
     --save-dir ./relssl/checkpoints/simclr_relpred
-python -m relssl.eval.linear_probe --data ./datasets/imagenet100 --arch resnet50 \
+python -m relssl.eval.linear_probe --data ./relssl/datasets/imagenet100 --arch resnet50 \
     --pretrained ./relssl/checkpoints/simclr_relpred/checkpoint_0500.pth.tar
-python -m relssl.eval.linear_probe --data ./datasets/imagenet100 --eval-rotation \
+python -m relssl.eval.linear_probe --data ./relssl/datasets/imagenet100 --eval-rotation \
     --pretrained <ckpt>
-python -m relssl.eval.few_shot --data ./datasets/flowers102_prepared --pretrained <ckpt>
+python -m relssl.eval.few_shot --data ./relssl/datasets/flowers102_prepared --pretrained <ckpt>
 
 # Inspect the fully-resolved config a run will use (no training)
 python -m relssl.train --framework moco --experiment baseline --print-config

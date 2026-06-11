@@ -30,9 +30,9 @@ GPU="${GPU:-0}"                                # CUDA device index
 CONDA_ENV="${CONDA_ENV:-pytorch_2_0_0}"       # conda env to activate
 
 # Data (paths are relative to the repo root)
-IN100="${IN100:-./datasets/imagenet100}"
-CUB="${CUB:-./datasets/cub200_prepared}"
-FLOWERS="${FLOWERS:-./datasets/flowers102_prepared}"
+IN100="${IN100:-./relssl/datasets/imagenet100}"
+CUB="${CUB:-./relssl/datasets/cub200_prepared}"
+FLOWERS="${FLOWERS:-./relssl/datasets/flowers102_prepared}"
 
 # Pilot-only knobs
 PILOT_CLASSES="${PILOT_CLASSES:-20}"

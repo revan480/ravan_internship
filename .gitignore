@@ -20,11 +20,10 @@ checkpoints/
 *.pt
 *.ckpt
 
-# Data — keep the datasets/ folder + its README in git, ignore the actual data
+# Data (datasets live in relssl/datasets/ — see relssl/.gitignore)
 imagenet*/
 data/
-datasets/*
-!datasets/README.md
+/datasets/
 
 # Logs
 *.log

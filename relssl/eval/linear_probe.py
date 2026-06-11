@@ -7,10 +7,10 @@ change vs the original is the checkpoint loader (reads backbone_state_dict via
 relssl.eval.common.load_backbone). Logging strings are unchanged so
 scripts/extract_results.py and the existing parsers still match.
 
-    python -m relssl.eval.linear_probe --data ./datasets/imagenet100 \
+    python -m relssl.eval.linear_probe --data ./relssl/datasets/imagenet100 \
         --pretrained ./relssl/checkpoints/simclr_relpred/checkpoint_0500.pth.tar
-    python -m relssl.eval.linear_probe --data ./datasets/imagenet100 --pretrained <ckpt> --eval-rotation
-    python -m relssl.eval.linear_probe --data ./datasets/cub200_prepared --pretrained <ckpt>
+    python -m relssl.eval.linear_probe --data ./relssl/datasets/imagenet100 --pretrained <ckpt> --eval-rotation
+    python -m relssl.eval.linear_probe --data ./relssl/datasets/cub200_prepared --pretrained <ckpt>
 """
 
 import argparse

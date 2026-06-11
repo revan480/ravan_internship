@@ -18,7 +18,7 @@ FRAMEWORK=${FRAMEWORK:-simclr}
 EXPERIMENT=${EXPERIMENT:-relpred}
 ARCH=${ARCH:-resnet50}
 EPOCHS=${EPOCHS:-500}
-IN100=${IN100:-./datasets/imagenet100}
+IN100=${IN100:-./relssl/datasets/imagenet100}
 
 # repo root = parent of the relssl/ package
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}"
