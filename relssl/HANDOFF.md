@@ -101,7 +101,7 @@ tar cf imagenet100.tar -C /home/<you>/projects --exclude='imagenet100/imagenet10
 Upload all three `.tar` files into **one** Google Drive folder (e.g. `relssl_datasets`),
 then share the folder as **"Anyone with the link"** and put that folder link below:
 
-> Drive folder: `https://drive.google.com/drive/folders/<FOLDER_ID>`
+> Drive folder: https://drive.google.com/drive/folders/1eK5vRp2vKaW7-ug396wifMviUIM0VclR
 
 ### 3b. Downloading + placing the data (the professor)
 
@@ -110,7 +110,7 @@ cd ravan_internship           # the working dir (contains relssl/)
 pip install gdown             # one-time
 
 # grab all three archives from the shared Drive folder
-gdown --folder "https://drive.google.com/drive/folders/<FOLDER_ID>"
+gdown --folder "https://drive.google.com/drive/folders/1eK5vRp2vKaW7-ug396wifMviUIM0VclR"
 
 # extract all three INTO ./relssl/datasets/  (tar xf auto-detects format)
 tar xf imagenet100.tar         -C relssl/datasets   # -> relssl/datasets/imagenet100/
